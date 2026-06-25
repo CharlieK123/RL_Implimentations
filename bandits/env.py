@@ -1,7 +1,7 @@
 import numpy as np
 
 from gradient_bandits import GradientBandit
-from elipson_greedy import EpsilonGreedy
+from epsilon_greedy import EpsilonGreedy
 
 
 class BanditEnv:
