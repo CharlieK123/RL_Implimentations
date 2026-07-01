@@ -47,7 +47,7 @@ class PPO:
             log_prob = dist.log_prob(action)
             value = self.value_net(obs).squeeze(-1)
 
-        return action.item(), log_prob.detach(), value.detach()
+        return action, log_prob, value
     
 
     def td_error(self, r, v_s, v_s1, done):

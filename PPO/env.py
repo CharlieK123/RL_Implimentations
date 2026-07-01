@@ -65,6 +65,10 @@ for i in range(updates):
     for _ in range(rollout_steps):
         action, log_prob, value = agent.get_action(obs)
 
+        print(action)
+        print(type(action))
+        print(action.shape if hasattr(action, "shape") else None)
+        print(action.numel() if hasattr(action, "numel") else None)
         next_obs, reward, terminated, truncated, _ = env.step(action)
         done = terminated or truncated
         episode_reward += reward
