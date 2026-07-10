@@ -20,14 +20,22 @@ CKPT_FILE = BASE / "policy.pt"
 """
 CHANGE THE ID BELOW TO THE NEW ENVIRONMENT NAME FROM GYMNASIUM DOCS
 """
-ENV_ID = 'BipedalWalker-v3'
+ENV_ID = "LunarLander-v3"
 
-OBS_DIM = 24
+"""
+THESE NN HYPERPARAMS MUST MATCH WHAT YOU CHOOSE IN THE ENV FILE
+YOU CAN FIND THE OBS AND ACT DIM OF A GIVEN ENV AT THE TOP OF THE DOC ON GYMNASIUM 
+
+also if you get a shape error it will usually say what the needed shape is 
+"""
+OBS_DIM = 8
 ACT_DIM = 4
+
 HIDDEN_DIM = 256
 NUM_HIDDEN = 2
-DISCRETE = False
+DISCRETE = True  # make sure this is right
 
+# these dont matter
 GAMMA = 0.99
 LAMBDA = 0.95
 EPS = 0.2
@@ -162,7 +170,7 @@ def watch_current_policy():
     if not loaded:
         return
 
-    env = gym.make(ENV_ID, hardcore=True, render_mode="human")
+    env = gym.make(ENV_ID, render_mode="human")
 
     try:
         watch_agent(env, agent, obs_stats, episodes=3, max_seconds=30)

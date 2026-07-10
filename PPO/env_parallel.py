@@ -78,8 +78,9 @@ agent = PPO(
     ent_coef=0.01   ,
     value_coef=0.5,
     epochs=5,
-    lr=3e-4,
-    minibatch=512,
+    policy_lr=3e-4,
+    value_lr=3e-4,
+    minibatch=128,
     multi_envs=True,
     discrete=True
 )
@@ -91,7 +92,7 @@ alpha = 0.02
 
 obs, _ = env.reset()
 updates = 10000
-rollout_steps = 250
+rollout_steps = 1000
 
 start = time.time()
 for i in range(updates):
