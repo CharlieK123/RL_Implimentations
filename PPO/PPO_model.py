@@ -135,16 +135,7 @@ class PPO:
         return r + ((1 - done) * self.gamma * v_s1) - v_s
 
     def gae(self, rewards, values, terminateds, next_value, truncateds=None):
-        # Two independent masks at an episode boundary:
-        #   bootstrap mask -> `terminateds` only. A true terminal has V=0, so we
-        #       kill the value bootstrap. A time-limit TRUNCATION is not terminal:
-        #       the agent would have kept earning reward, so we KEEP the bootstrap.
-        #       Under gymnasium NEXT_STEP autoreset the true final obs is stored as
-        #       the next transition, so values[t+1] already holds V(s_final).
-        #   cut mask -> `terminateds | truncateds`. In BOTH cases the next stored
-        #       transition belongs to a new episode, so stop the GAE recursion.
-        # Backward compat: old callers pass a single `dones` flag as `terminateds`
-        # with truncateds=None, which reproduces the original (1-done) behaviour.
+
         if truncateds is None:
             truncateds = torch.zeros_like(terminateds)
 
@@ -191,10 +182,6 @@ class PPO:
             else:
                 actions = actions.float()
 
-        # Drop gymnasium NEXT_STEP autoreset "dummy" transitions (reward 0, action
-        # ignored by the env). They carry no learning signal and their garbage
-        # advantages would corrupt the advantage normalisation below. GAE has
-        # already consumed their stored V(s_final), so it is safe to remove them here.
         if dummies is not None:
             valid = (dummies.reshape(-1) < 0.5)
             states = states[valid]
