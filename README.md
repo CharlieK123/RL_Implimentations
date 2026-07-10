@@ -21,7 +21,7 @@ NOTE: hyperparameters are EXTREMELY sensitive to environments in classic RL fash
 my code will solve all environments if hyperparams are done well!
 
 DIffuculty ranking:
-Cartpole: instant solve (discrete)
+Cartpole: instant solve (discrete) /n
 LunarLander: quick solve (3M ish) (discrete)
 BipedalWalker (normal): resonable solve (5-7Mish) (continuous)
 BipedalWalker (hardcore): frustratingly hard, expect progress at around 15M, solving the env at around 30M+ (Continuous)
