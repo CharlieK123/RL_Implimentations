@@ -65,7 +65,7 @@ class PPO:
         #self.return_norm = RunningNorm()
 
         if not self.discrete:
-            self.log_std = nn.Parameter(torch.full((act_dim,), -0.5))
+            self.log_std = nn.Parameter(torch.full((act_dim,), -1.0))
             self.policy_optim = optim.Adam(list(self.policy_net.parameters()) + [self.log_std], lr=self.policy_lr, eps=1e-5)
         else:
             self.policy_optim = optim.Adam(self.policy_net.parameters(), lr=self.policy_lr, eps=1e-5)

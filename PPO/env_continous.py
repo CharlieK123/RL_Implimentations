@@ -58,7 +58,7 @@ env_id = 'BipedalWalker-v3'
 def run():
     obs, _ = env.reset()
     updates = 20_000
-    rollout_steps = 1024
+    rollout_steps = 512
 
     # Tracks which envs were done on the previous step. Under gymnasium NEXT_STEP
     # autoreset, the step immediately after a done is a reset step whose action was
@@ -147,7 +147,7 @@ if __name__ == "__main__":
 
     def make_env(env_id):
         def thunk():
-            return gym.make(env_id, hardcore=True)
+            return gym.make(env_id)
 
         return thunk
 
@@ -180,21 +180,21 @@ if __name__ == "__main__":
     agent = PPO(
         obs_dim=obs_dim,
         act_dim=act_dim,
-        hidden_dim=256,
+        hidden_dim=64,
         num_hidden=2,
         gamma=0.99,
         lmbda=0.95,
         eps=0.2,
-        ent_coef=0.001,
+        ent_coef=0.01,
         value_coef=0.5,
-        epochs=10,
-        policy_lr=1e-4,
-        value_lr=1e-4,
-        minibatch=256,
+        epochs=5,
+        policy_lr=3e-4,
+        value_lr=3e-4,
+        minibatch=128,
         multi_envs=True,
         discrete=False,
-        decay_actor_lr=(1e-4, 1e-5, 1500),
-        decay_critic_lr=(1e-4, 1e-5, 1500),
+        decay_actor_lr=(3e-4, 3e-5, 700),
+        decay_critic_lr=(3e-4, 3e-5, 700),
         decay_ent=(0.01, 0.001, 500),
         kl_target=0.03
     )

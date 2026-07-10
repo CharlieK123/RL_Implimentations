@@ -70,17 +70,17 @@ act_dim = env.single_action_space.n  # 2
 agent = PPO(
     obs_dim=obs_dim,
     act_dim=act_dim,
-    hidden_dim=256,
+    hidden_dim=64,
     num_hidden=2,
     gamma=0.99,
     lmbda=0.95,
     eps=0.2,
-    ent_coef=0.01   ,
+    ent_coef=0.01,
     value_coef=0.5,
     epochs=5,
     policy_lr=3e-4,
     value_lr=3e-4,
-    minibatch=128,
+    minibatch=64,
     multi_envs=True,
     discrete=True
 )
@@ -92,7 +92,7 @@ alpha = 0.02
 
 obs, _ = env.reset()
 updates = 10000
-rollout_steps = 1000
+rollout_steps = 500
 
 start = time.time()
 for i in range(updates):
