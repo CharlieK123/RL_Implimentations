@@ -21,9 +21,9 @@ NOTE: hyperparameters are EXTREMELY sensitive to environments in classic RL fash
 my code will solve all environments if hyperparams are done well!
 
 DIffuculty ranking:
-Cartpole: instant solve (discrete) /n
-LunarLander: quick solve (3M ish) (discrete)
-BipedalWalker (normal): resonable solve (5-7Mish) (continuous)
-BipedalWalker (hardcore): frustratingly hard, expect progress at around 15M, solving the env at around 30M+ (Continuous)
-Humanoid (MuJoCo): Suprisingly learning to walk seems to be an easier task than hardcore bipedal (5M-10Mish) (continuous)
-HumanoidStandup (MuJoCo) definately hard, progress at 15M (attempted standups) maintained upright standing at 30M+ (continuous)
+- Cartpole: instant solve (discrete) /n
+- LunarLander: quick solve (3M ish) (discrete)
+- BipedalWalker (normal): resonable solve (5-7Mish) (continuous)
+- BipedalWalker (hardcore): frustratingly hard, expect progress at around 15M, solving the env at around 30M+ (Continuous)
+- Humanoid (MuJoCo): Suprisingly learning to walk seems to be an easier task than hardcore bipedal (5M-10Mish) (continuous)
+- HumanoidStandup (MuJoCo) definately hard, progress at 15M (attempted standups) maintained upright standing at 30M+ (continuous)
