@@ -3,9 +3,22 @@ import numpy as np
 from PPO_model import PPO
 import torch
 import time
+from metrics import env_log
 
-env = gym.make("LunarLander-v3")
+def make_env(env_id):
+    def thunk():
+        return gym.make(env_id)
+    return thunk
+
+env_id = "LunarLander-v3"
+num_envs = 8
 render_env = gym.make("LunarLander-v3", render_mode="human")
+
+env = gym.vector.SyncVectorEnv(
+    [make_env(env_id) for _ in range(num_envs)]
+)
+
+
 
 def watch_agent(env, agent, episodes=3, max_seconds=10):
     start_time = time.time()
@@ -34,44 +47,61 @@ def watch_agent(env, agent, episodes=3, max_seconds=10):
 
         print(f"watched episode return: {ep_return}")
 
-obs_dim = env.observation_space.shape[0]   # 4
-act_dim = env.action_space.n               # 2
+
+def update_reward_ema(done_list, ep_ema, ep_reward, a):
+    for j in range(len(done_list)):
+
+        if done_list[j]:  # env[i] has terminated and the ema should adjust
+            episode_return = ep_reward[j]
+
+            if ep_ema is np.nan:
+                ep_ema = episode_return
+
+            else:
+                ep_ema = (1 - a) * ep_ema + (a * episode_return)
+            ep_reward[j] = 0
+
+    return ep_ema, ep_reward, episode_return
+
+
+obs_dim = env.single_observation_space.shape[0]  # 4
+act_dim = env.single_action_space.n  # 2
 
 agent = PPO(
     obs_dim=obs_dim,
     act_dim=act_dim,
-    hidden_dim=64,
+    hidden_dim=256,
     num_hidden=2,
     gamma=0.99,
     lmbda=0.95,
     eps=0.2,
-    ent_coef=0.01,
+    ent_coef=0.01   ,
     value_coef=0.5,
-    epochs=4,
+    epochs=5,
     lr=3e-4,
-    minibatch=64,
+    minibatch=512,
+    multi_envs=True,
+    discrete=True
 )
 
-updates = 10000
-rollout_steps = 1000
+episode_reward = np.zeros(num_envs)
+latest_ep_reward = np.nan
+episode_ema = np.nan
+alpha = 0.02
 
+obs, _ = env.reset()
+updates = 10000
+rollout_steps = 250
+
+start = time.time()
 for i in range(updates):
     states, actions, rewards, dones, log_probs, values = [], [], [], [], [], []
-    episode_reward = 0
-    episode_all_rewards = []
 
-    obs, _ = env.reset()
-    
     for _ in range(rollout_steps):
         action, log_prob, value = agent.get_action(obs)
 
-        print(action)
-        print(type(action))
-        print(action.shape if hasattr(action, "shape") else None)
-        print(action.numel() if hasattr(action, "numel") else None)
         next_obs, reward, terminated, truncated, _ = env.step(action)
-        done = terminated or truncated
-        episode_reward += reward
+        done = terminated | truncated
 
         states.append(torch.as_tensor(obs, dtype=torch.float32))
         actions.append(torch.as_tensor(action))
@@ -80,14 +110,14 @@ for i in range(updates):
         log_probs.append(log_prob)
         values.append(value)
 
+        episode_reward += reward
         obs = next_obs
 
-        if done:
-            obs, _ = env.reset()
-            episode_all_rewards.append(episode_reward)
-            if episode_reward == 500: print(f'500 at: {i}')
-            episode_reward = 0
-        
+        # eval
+        if True in done:  # check to see if at least one env terminated
+            episode_ema, episode_reward, latest_ep_reward = update_reward_ema(done, episode_ema, episode_reward, alpha)
+            env_log(episode_ema, latest_ep_reward)
+
     with torch.no_grad():
         next_obs_tensor = torch.as_tensor(obs, dtype=torch.float32)
         next_value = agent.value_net(next_obs_tensor).squeeze(-1)
@@ -100,15 +130,12 @@ for i in range(updates):
     values = torch.stack(values)
 
     advantages, returns = agent.gae(rewards, values, dones, next_value)
+
     agent.update(states, actions, log_probs, advantages, returns)
 
-    if i % 100 == 0:
-        print(episode_all_rewards, sum(episode_all_rewards))
-        if i % 500 == 0:
-            print(i)
-            watch_agent(render_env, agent)
+    if i % 10 == 0:
+        print(f'iteration: {i}, ema: {episode_ema}, noisy episode: {latest_ep_reward} \n')
 
 
 
-
-
+final_agent = agent

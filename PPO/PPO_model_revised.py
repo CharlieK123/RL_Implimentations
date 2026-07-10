@@ -1,3 +1,19 @@
+"""
+Revised PPO model.
+
+Difference from PPO_model.py: the continuous policy is a PLAIN diagonal Gaussian
+(SB3-style) instead of a tanh-squashed Gaussian.
+
+  - get_action: no tanh, no jacobian correction. We sample from Normal(mean, std),
+    train on the unclipped sample, and clip only the copy handed to the env.
+  - update: log_prob and entropy are the plain Gaussian's, so the entropy bonus
+    now regularises the SAME distribution we optimise (the old code measured the
+    pre-squash Gaussian's entropy while acting through a squashed policy).
+
+Everything else (GAE, truncation handling, dummy-transition filtering, discrete
+path) is identical to PPO_model.py.
+"""
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -15,6 +31,10 @@ import torch
 
 CKPT = Path(__file__).parent / "ppo_policy.pt"
 TMP_CKPT = Path(__file__).parent / "ppo_policy.tmp"
+
+# Environment action bound. HumanoidStandup-v5 action space is Box(-0.4, 0.4).
+ACTION_LOW = -0.4
+ACTION_HIGH = 0.4
 
 def LinearDecay(agent, inital, final, update):
     progress = min(agent.i / update, 1.0)
@@ -113,11 +133,13 @@ class PPO:
 
                 dist = Normal(mean, std)
                 raw_action = dist.rsample()
-                squashed = torch.tanh(raw_action)
-                action = squashed
 
+                # Plain diagonal Gaussian: no tanh squashing. We train on the raw
+                # sample (raw_action) and hand the env a clipped copy. log_prob is
+                # therefore the true density of the distribution we optimise.
                 log_prob = dist.log_prob(raw_action).sum(-1)
-                log_prob -= torch.log(1 - squashed.pow(2) + 1e-6).sum(-1)
+
+                action = raw_action.clamp(ACTION_LOW, ACTION_HIGH)
 
                 value = self.value_net(obs).squeeze(-1)
                 #value = value * self.return_norm.std + self.return_norm.running_mean
@@ -277,11 +299,11 @@ class PPO:
                 else:
                     std = self.log_std.clamp(-2.0, 2).exp().expand_as(out)
 
+                    # Plain diagonal Gaussian: log_prob on the raw stored action,
+                    # entropy of the same Gaussian. No tanh jacobian.
                     dist = Normal(out, std)
-                    squashed_actions = torch.tanh(batch_actions)
 
                     new_log = dist.log_prob(batch_actions).sum(-1)
-                    new_log -= torch.log(1 - squashed_actions.pow(2) + 1e-6).sum(-1)
 
                     entropy = dist.entropy().sum(-1).mean()
 
@@ -323,7 +345,7 @@ class PPO:
                     approx_kl = ((torch.exp(log_ratio) - 1) - log_ratio).mean()
 
 
-                if self.kl_target is not None and approx_kl.item() >= 1.5 * self.kl_target:
+                if self.kl_target is not None and approx_kl.item() >= 1.5 * self.kl_target and False:
                     early_stop = True
                     print(
                         f"Early stopping at epoch {epoch} due to reaching "
@@ -371,5 +393,3 @@ class PPO:
                 obs_norm=obs_env,
                 rew_norm=norm_env,
             )
-
-
