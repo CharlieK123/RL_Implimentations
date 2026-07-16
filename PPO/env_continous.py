@@ -1,9 +1,22 @@
 import gymnasium as gym
 import numpy as np
-from PPO_model import PPO
+from PPO_model_revised import PPO
 import torch
 import time
+from pathlib import Path
 from metrics import env_log, reset_history
+from pretrain_recorder import RecordingNormalizeObservation, StateRecorder
+
+# JEPA pretraining-data collection (STATE-ONLY). Recording happens as a side effect of
+# training: a short contiguous slice of states (STEPS_PER_SHARD steps) is dumped every
+# RECORD_EVERY_UPDATES updates, giving fine temporal coverage of the random->expert
+# curriculum. Set RECORD_PRETRAIN_DATA = False to train without saving anything.
+RECORD_PRETRAIN_DATA = True
+TOTAL_UPDATES = 20_000
+RECORD_EVERY_UPDATES = 10        # capture a slice this often (in PPO updates)
+STEPS_PER_SHARD = 256            # contiguous steps per slice (out of the 2048-step rollout)
+MAX_SHARDS = None                # optional cap on total slices (None = until training ends)
+PRETRAIN_OUT_DIR = Path(__file__).parent / "pretrain_data" / "states"
 
 
 def watch_agent(env, agent, episodes=3, max_seconds=10):
@@ -49,16 +62,16 @@ def update_reward_ema(done_list, ep_ema, ep_reward, a):
 
     return ep_ema, ep_reward, episode_return
 
-num_envs = 8
+num_envs = 16
 
 
-env_id = 'BipedalWalker-v3'
+env_id = 'HumanoidStandup-v5'
 
 
 def run():
     obs, _ = env.reset()
-    updates = 20_000
-    rollout_steps = 512
+    updates = TOTAL_UPDATES
+    rollout_steps = 2048
 
     # Tracks which envs were done on the previous step. Under gymnasium NEXT_STEP
     # autoreset, the step immediately after a done is a reset step whose action was
@@ -76,7 +89,18 @@ def run():
     for i in range(updates):
         states, actions, rewards, terminateds, truncateds, dummies, log_probs, values = [], [], [], [], [], [], [], []
 
+        # Record this whole rollout to the pretraining dataset iff it's a chosen update.
+        recording = recorder is not None and recorder.should_record(i)
+        if recording:
+            recorder.start_rollout()
+
         for _ in range(rollout_steps):
+            # Record the RAW (un-normalised) state for THIS step, stashed by
+            # RecordingNormalizeObservation on the previous step / reset. prev_done is the
+            # dummy (autoreset) flag. Slice ends once STEPS_PER_SHARD states are captured.
+            if recording and not recorder.slice_complete():
+                recorder.record_step(raw_obs=obs_norm.last_raw_obs.copy(), dummy=prev_done)
+
             action, raw_action, log_prob, value, mean, std = agent.get_action(obs)
 
             next_obs, reward, terminated, truncated, info = env.step(action)
@@ -111,6 +135,10 @@ def run():
                         latest_ep_reward = raw_return
                         env_log(episode_ema, latest_ep_reward)
 
+        if recording:
+            recorder.flush_shard(i)
+            recorder.save_obs_rms(obs_norm.obs_rms)  # keep stats current if interrupted
+
         with torch.no_grad():
             next_obs_tensor = torch.as_tensor(obs, dtype=torch.float32)
             next_value = agent.value_net(next_obs_tensor).squeeze(-1)
@@ -142,6 +170,9 @@ def run():
             print("values :", values.mean().item(), values.std().item())
             #print(np.mean(obs, axis=0))
 
+    if recorder is not None:
+        recorder.finalize(obs_norm.obs_rms)
+
 
 if __name__ == "__main__":
 
@@ -160,7 +191,9 @@ if __name__ == "__main__":
 
     env = gym.wrappers.vector.RecordEpisodeStatistics(env)
 
-    obs_norm = gym.wrappers.vector.NormalizeObservation(env)
+    # RecordingNormalizeObservation stashes the raw (pre-normalisation) obs so the dataset
+    # stores unnormalised states (behaviour is otherwise identical to the plain wrapper).
+    obs_norm = RecordingNormalizeObservation(env)
 
     env = gym.wrappers.vector.TransformObservation(
         obs_norm,
@@ -180,23 +213,37 @@ if __name__ == "__main__":
     agent = PPO(
         obs_dim=obs_dim,
         act_dim=act_dim,
-        hidden_dim=64,
+        hidden_dim=256,
         num_hidden=2,
         gamma=0.99,
         lmbda=0.95,
         eps=0.2,
-        ent_coef=0.01,
+        ent_coef=0.001,
         value_coef=0.5,
-        epochs=5,
-        policy_lr=3e-4,
-        value_lr=3e-4,
-        minibatch=128,
+        epochs=10,
+        policy_lr=1e-4,
+        value_lr=1e-4,
+        minibatch=256,
         multi_envs=True,
         discrete=False,
-        decay_actor_lr=(3e-4, 3e-5, 700),
-        decay_critic_lr=(3e-4, 3e-5, 700),
-        decay_ent=(0.01, 0.001, 500),
+        decay_actor_lr=(1e-4, 1e-5, 500),
+        decay_critic_lr=(1e-4, 1e-5, 500),
+        decay_ent=(0.001, 0.000, 500),
         kl_target=0.03
+    )
+
+    recorder = (
+        StateRecorder(
+            out_dir=PRETRAIN_OUT_DIR,
+            num_envs=num_envs,
+            obs_dim=obs_dim,
+            env_id=env_id,
+            record_every=RECORD_EVERY_UPDATES,
+            steps_per_shard=STEPS_PER_SHARD,
+            max_shards=MAX_SHARDS,
+        )
+        if RECORD_PRETRAIN_DATA
+        else None
     )
 
     run()

@@ -21,7 +21,7 @@ CKPT_FILE = BASE / "policy.pt"
 CHANGE THE ID BELOW TO THE NEW ENVIRONMENT NAME FROM GYMNASIUM DOCS
 BY DEFAULT. ENV_CONTINUOUS: "BipedalWalker-v3" (continuous) ENV_PARALLEL: "LunarLander-v3" (discrete)
 """
-ENV_ID = "LunarLander-v3"
+ENV_ID = 'HumanoidStandup-v5'
 
 """
 THESE NN HYPERPARAMS MUST MATCH WHAT YOU CHOOSE IN THE ENV FILE
@@ -29,12 +29,12 @@ YOU CAN FIND THE OBS AND ACT DIM OF A GIVEN ENV AT THE TOP OF THE DOC ON GYMNASI
 
 also if you get a shape error it will usually say what the needed shape is 
 """
-OBS_DIM = 8
-ACT_DIM = 4
+OBS_DIM = 348
+ACT_DIM = 17
 
-HIDDEN_DIM = 64
+HIDDEN_DIM = 256
 NUM_HIDDEN = 2
-DISCRETE = True  # make sure this is right
+DISCRETE = False  # make sure this is right
 
 # these dont matter
 GAMMA = 0.99

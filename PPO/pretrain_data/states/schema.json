@@ -1,0 +1,12 @@
+{
+  "arrays": {
+    "obs": "float16 [T, N, 348]  raw (un-normalised) observations (states)",
+    "dummy": "bool [T, N]  gymnasium NEXT_STEP autoreset step (episode-boundary marker)",
+    "update_idx": "int64 []  PPO update this slice came from (0=start of training)",
+    "env_id": "str []  gymnasium env id"
+  },
+  "layout": "STATE-ONLY dataset. One .npz per recorded slice. Time-major with per-env columns so s_t -> s_{t+1} adjacency is preserved down each env stream. Axis N is the parallel env index; episodes in different columns are unrelated and interleave over training.",
+  "window_rule": "A valid length-(L+1) window obs[t .. t+L] down one env column exists iff dummy[t .. t+L] are ALL False. dummy[k+1] is true exactly when the episode ended at step k, so this keeps every window inside one episode and never crosses an autoreset. (No terminated/truncated arrays are needed \u2014 dummy encodes the same boundaries.)",
+  "obs_normalization": "obs is RAW. obs_rms.npz holds the running mean/var/count from the latest flush; apply (obs - mean)/sqrt(var + 1e-8) then clip(-10, 10) to match what the policy saw, or use raw obs directly for the world model.",
+  "notes": "States logged DURING PPO training, so low-update_idx slices are near-random behaviour and later slices are competent standups. A short contiguous slice is captured every `record_every` updates (fine temporal sampling), NOT by time-subsampling within a rollout (which would break s_t -> s_{t+1})."
+}

@@ -310,7 +310,7 @@ class PPO:
                     approx_kl = ((torch.exp(log_ratio) - 1) - log_ratio).mean()
 
 
-                if self.kl_target is not None and approx_kl.item() >= 1.5 * self.kl_target:
+                if self.kl_target is not None and approx_kl.item() >= 1.5 * self.kl_target and False:
                     early_stop = True
                     print(
                         f"Early stopping at epoch {epoch} due to reaching "
