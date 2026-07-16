@@ -74,8 +74,11 @@ class FFN(nn.Module):
         return self.network(x)
 
 
-
 def stackcube_state(s, n_qpos=9):
+    """
+    Splits a flat StackCube-v1 state vector [..., D] into its component
+    objects. Returns them independently (no dict, no stacking).
+    """
     i = n_qpos
     qpos            = s[..., 0:i]
     qvel            = s[..., i:2*i]
@@ -90,7 +93,7 @@ def stackcube_state(s, n_qpos=9):
 
 
 class JEPA(nn.Module):
-    def __init__(self, latent_dim, encoder_params, projection_params=None, momentum=0.995, ac=False, objects=8):
+    def __init__(self, latent_dim, encoder_params, projection_params=None, momentum=0.995, ac=False, n_qpos=9):
         super().__init__()
         #  blocks, residual_dim, hidden_dim, att_heads = encoder_params
         #  hidden_layers, hidden_dim = projection_params
@@ -104,15 +107,22 @@ class JEPA(nn.Module):
         self.momentum = momentum
         self.ac = ac is not False
 
+        self.n_qpos = n_qpos
         predictor_dim = latent_dim
-        objs = [9, 9, 7, 7, 7, 3, 3, 3]
-        self.embedding_networks = nn.ModuleList([FFN(objs[i], latent_dim/len(objs), 1, 128) for i in range(len(objs))])
+
+        # per-object input dims, matching stackcube_state's output order
+        self.obj_dims = [n_qpos, n_qpos, 7, 7, 7, 3, 3, 3]
+
+        # each object gets embedded to the FULL latent_dim, since each becomes
+        # one token fed into the transformer encoder (residual_dim == latent_dim)
+        self.embedding_networks = nn.ModuleList(
+            [FFN(dim, latent_dim, 1, 128) for dim in self.obj_dims]
+        )
 
         if ac is not False:
             # ac = (act_dim, embed_dim, hidden_layers, hidden_dim)
             self.action_encoder = FFN(*ac)
             predictor_dim = ac[1] + latent_dim
-
 
         if projection_params is not None:
             self.predictor = FFN(predictor_dim, latent_dim, *projection_params)
@@ -120,12 +130,13 @@ class JEPA(nn.Module):
             self.predictor = nn.Linear(predictor_dim, latent_dim)
 
     def embed_object(self, state):
-        embed_state = []
-        for i, object in enumerate(stackcube_state(state)):
-            embed_state.append(self.embedding_networks[i](object))
-        print(torch.tensor(embed_state).shape)
-        return torch.tensor(embed_state)
-
+        """
+        state: [batch, 1, D] flat StackCube state.
+        returns: [batch, n_objects, latent_dim] — one token per object.
+        """
+        objects = stackcube_state(state, n_qpos=self.n_qpos)
+        embedded = [net(obj) for net, obj in zip(self.embedding_networks, objects)]
+        return torch.cat(embedded, dim=1)
 
     def forward(self, state_t, state_tk, action_t=None):
 
@@ -136,23 +147,21 @@ class JEPA(nn.Module):
             state_tk = state_tk.unsqueeze(1)
 
         # use current state to predict future latent state
-        state_t = self.embed_object(state_t)
-        print(state_t.shape, state_tk.shape)
-        latent_t = self.encoder(state_t)
+        state_t_embedded = self.embed_object(state_t)          # [batch, n_objects, latent_dim]
+        latent_t = self.encoder(state_t_embedded)              # [batch, n_objects, latent_dim]
+        latent_t = latent_t.mean(dim=1)                        # pool object tokens -> [batch, latent_dim]
 
         if action_t is not None:
-            action_embedding = self.action_encoder(action_t)
-            action_embedding = action_embedding.unsqueeze(1)
+            action_embedding = self.action_encoder(action_t)   # [batch, action_embed_dim]
             latent_t = torch.cat([latent_t, action_embedding], dim=-1)
 
-        latent_tk_hat = self.predictor(latent_t)
+        latent_tk_hat = self.predictor(latent_t)                # [batch, latent_dim]
 
         # get the true latent future state with stop gradient target encoder
         with torch.no_grad():
-            latent_tk = self.target_encoder(state_tk)
+            state_tk_embedded = self.embed_object(state_tk)
+            latent_tk = self.target_encoder(state_tk_embedded).mean(dim=1)  # [batch, latent_dim]
 
-        latent_tk_hat = latent_tk_hat.squeeze(1)
-        latent_tk = latent_tk.squeeze(1)
         return latent_tk_hat, latent_tk
 
     @torch.no_grad()
@@ -209,8 +218,11 @@ def train(model, epochs, loader, optim, device="cuda"):
 
             # eval metrics
             with torch.no_grad():
-                online_latent = model.encoder(states.unsqueeze(1)).squeeze(1)
-                future_target = model.target_encoder(next_states.unsqueeze(1)).squeeze(1)
+                states_unsq = states.unsqueeze(1) if states.ndim == 2 else states
+                next_states_unsq = next_states.unsqueeze(1) if next_states.ndim == 2 else next_states
+
+                online_latent = model.encoder(model.embed_object(states_unsq)).mean(dim=1)
+                future_target = model.target_encoder(model.embed_object(next_states_unsq)).mean(dim=1)
 
                 latent_std = online_latent.std(dim=0, unbiased=False).mean()
                 latent_abs = online_latent.abs().mean()
